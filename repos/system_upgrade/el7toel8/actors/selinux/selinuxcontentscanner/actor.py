@@ -18,10 +18,10 @@ class SelinuxContentScanner(Actor):
         cmd = [ 'semanage', 'export' ]
         stdout = call(cmd)
         semodules = SelinuxModules(
-            modules=SelinuxModule(
+            modules=[SelinuxModule(
                 name="nn",
                 priority=1,
                 content=stdout
-        ),)
+        )],)
         self.produce(semodules)
 
