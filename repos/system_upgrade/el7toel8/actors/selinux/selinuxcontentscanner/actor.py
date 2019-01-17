@@ -1,6 +1,6 @@
 from leapp.actors import Actor
 from leapp.models import SelinuxModules, SelinuxModule, SystemFacts
-from leapp.tags import FactsCollectionPhaseTag, IPUWorkflowTag
+from leapp.tags import FactsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 
 class Selinuxcontentscanner(Actor):
