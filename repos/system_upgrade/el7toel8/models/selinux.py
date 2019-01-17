@@ -5,7 +5,7 @@ class SelinuxModule(Model):
     topic = SystemInfoTopic
     name = fields.String()
     priority = fields.Integer()
-    content = fieds.String()
+    content = fields.String()
 
 
 class SelinuxModules(Model):
