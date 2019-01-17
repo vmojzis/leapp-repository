@@ -3,12 +3,12 @@ from leapp.models import SelinuxModules, SelinuxModule, SystemFacts
 from leapp.tags import FactsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 
-class Selinuxcontentscanner(Actor):
+class SelinuxContentScanner(Actor):
     name = 'selinuxcontentscanner'
     description = 'No description has been provided for the selinuxcontentscanner actor.'
-    consumes = (SystemFacts)
+    consumes = (SystemFacts, )
     produces = (SelinuxModules,)
-    tags = (FactsPhaseTag, IPUWorkflowTag)
+    tags = (FactsPhaseTag, IPUWorkflowTag, )
 
     def process(self):
         for fact in self.consume(SystemFacts):
