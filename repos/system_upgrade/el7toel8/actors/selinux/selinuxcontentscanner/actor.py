@@ -16,7 +16,7 @@ class SelinuxContentScanner(Actor):
                 return
 
         cmd = [ 'semanage', 'export' ]
-        stdout = call(cmd)
+        stdout = call(cmd, split=False)
         semodules = SelinuxModules(
             modules=[SelinuxModule(
                 name="nn",
