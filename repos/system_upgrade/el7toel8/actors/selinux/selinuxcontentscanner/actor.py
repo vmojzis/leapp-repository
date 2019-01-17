@@ -8,7 +8,7 @@ class Selinuxcontentscanner(Actor):
     description = 'No description has been provided for the selinuxcontentscanner actor.'
     consumes = (SystemFacts)
     produces = (SelinuxModules,)
-    tags = (FactsCollectionPhaseTag, IPUWorkflowTag)
+    tags = (FactsPhaseTag, IPUWorkflowTag)
 
     def process(self):
         for fact in self.consume(SystemFacts):
