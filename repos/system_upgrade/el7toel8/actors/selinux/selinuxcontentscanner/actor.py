@@ -6,7 +6,27 @@ import subprocess
 import re
 import os
 
+# types and attributes that where removed between RHEL 7 and 8
+REMOVED_TYPES_=["base_typeattr_15","direct_run_init","gpgdomain","httpd_exec_scripts","httpd_user_script_exec_type","ibendport_type","ibpkey_type","pcmcia_typeattr_2","pcmcia_typeattr_3","pcmcia_typeattr_4","pcmcia_typeattr_5","pcmcia_typeattr_6","pcmcia_typeattr_7","sandbox_caps_domain","sandbox_typeattr_2","sandbox_typeattr_3","sandbox_typeattr_4","server_ptynode","systemctl_domain","user_home_content_type","userhelper_type","cgdcbxd_exec_t","cgdcbxd_t","cgdcbxd_unit_file_t","cgdcbxd_var_run_t","ganesha_use_fusefs","ganesha_exec_t","ganesha_t","ganesha_tmp_t","ganesha_unit_file_t","ganesha_var_log_t","ganesha_var_run_t","ganesha_use_fusefs"]
+# to be used with grep
+REMOVED_TYPES="|".join(REMOVED_TYPES_)
+# to be used with sed
+SED_COMMAND='/' + '\|'.join(REMOVED_TYPES_) + '/s/^/;/g'
 
+# types, attributes and boolean contained in container-selinux
+CONTAINER_TYPES="|".join(["container_connect_any","container_runtime_t","container_runtime_exec_t","spc_t","container_auth_t","container_auth_exec_t","spc_var_run_t","container_var_lib_t","container_home_t","container_config_t","container_lock_t","container_log_t","container_runtime_tmp_t","container_runtime_tmpfs_t","container_var_run_t","container_plugin_var_run_t","container_unit_file_t","container_devpts_t","container_share_t","container_port_t","container_build_t","container_logreader_t","docker_log_t","docker_tmpfs_t","docker_share_t","docker_t","docker_lock_t","docker_home_t","docker_exec_t","docker_unit_file_t","docker_devpts_t","docker_config_t","docker_tmp_t","docker_auth_exec_t","docker_plugin_var_run_t","docker_port_t","docker_auth_t","docker_var_run_t","docker_var_lib_t","container_domain","container_net_domain"])
+
+
+def checkModule(name)
+    """ Check if module contains one of removed types.
+        If so, comment out corresponding lines and return them.
+    """
+    try:
+        removed = call(['grep', '-w', '-E', REMOVED_TYPES, name], split=True)
+        call(['sed', '-i', SED_COMMAND, name])
+        return removed
+    except subprocess.CalledProcessError:
+        return []
 
 def parseSemodule(modules_str):
     """Parse list of modules into list of tuples (name,priority)"""
@@ -45,19 +65,33 @@ def getSelinuxModules():
         # extract custom module and save it to SelinuxModule object
         try:
             call(['semodule', '-c', '-X', priority, '-E', name])
+            # check if the module contains invalid types and remove them if so
+            removed = checkModule(name + ".cil")
+            # get content of the module
             module_content = call(['cat', name + ".cil"], split=True)
+
             semodule_list.append(SelinuxModule(
                 name=name,
                 priority=int(priority),
-                content=module_content
+                content=module_content,
+                removed=removed
                 )
             )
-            # clean-up
-            os.remove(name + ".cil")
-
         except subprocess.CalledProcessError:
             continue
+
+    # Check if modules contain any type, attribute, or boolean contained in container-selinux and install it if so
+    # This is necessary since container policy module is part of selinux-policy-targeted in RHEL 7 (but not in RHEL 8) 
+    try:
+        semodule = call(['grep', '-w', '-r', '-E', CONTAINER_TYPES], split=False)
+        #TODO - request "container-selinux" to be installed
+    except subprocess.CalledProcessError:
+        # expected, ignore exception
+        pass
+
     # clean-up
+    for (name, priority) in modules:
+        os.remove(name + ".cil")
     os.rmdir("/tmp/selinux")
     os.chdir(wd)
 
@@ -97,4 +131,5 @@ class SelinuxContentScanner(Actor):
         #        content=stdout
         #)],)
         #self.produce(semodules)
+
 

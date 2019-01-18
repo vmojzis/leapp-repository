@@ -7,6 +7,8 @@ class SelinuxModule(Model):
     name = fields.String()
     priority = fields.Integer()
     content = fields.List(fields.String())
+    # lines removed due to content invalid on RHEL 8
+    removed = fields.List(fields.String())
 
 class SelinuxModules(Model):
     """List of custom selinux modules (priority != 100,200)"""
