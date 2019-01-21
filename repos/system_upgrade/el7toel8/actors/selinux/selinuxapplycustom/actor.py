@@ -1,5 +1,5 @@
 from leapp.actors import Actor
-from leapp.models import SELinuxModules, SELinuxCustom,
+from leapp.models import SELinuxModules, SELinuxCustom, CheckResult
 from leapp.tags import FactsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 import subprocess
@@ -25,12 +25,13 @@ class SELinuxApplyCustom(Actor):
 
         # exit if SELinux is disabled
         for semodules in self.consume(SELinuxModules):
-            self.log.info("Processing " +
-                len(semodules.modules) + "custom SELinux policy modules.")
+            self.log.info("Processing custom SELinux policy modules. Count: " + 
+                str(len(semodules.modules))
+            )
             for module in semodules.modules:
                 cil_filename = module.name + ".cil"
                 self.log.info("Installing " + module.name
-                 + " on priority " + module.priority + ".")
+                 + " on priority " + str(module.priority) + ".")
                 if module.removed:
                     self.log.info("The following lines where removed because of incompatibility: ")
                     self.log.info('\n'.join(module.removed))
