@@ -1,5 +1,5 @@
 from leapp.actors import Actor
-from leapp.models import SelinuxModules, SelinuxModule, SelinuxCustom, SystemFacts
+from leapp.models import SELinuxModules, SELinuxModule, SELinuxCustom, SystemFacts
 from leapp.tags import FactsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 import subprocess
@@ -32,6 +32,8 @@ def parseSemodule(modules_str):
     """Parse list of modules into list of tuples (name,priority)"""
     modules = []
     for module in modules_str:
+        # Matching line such as "100 zebra             pp "
+        # "<priority> <module name>    <module type - pp/cil> "
         m = re.match('([0-9]+)\s+(\w+)\s+(\w+)\s*\Z', module)
         if not m:
             #invalid output of "semodule -lfull"
@@ -40,7 +42,7 @@ def parseSemodule(modules_str):
 
     return modules
 
-def getSelinuxModules():
+def getSELinuxModules():
     try:
         semodule = call(['semodule', '-lfull'], split=True)
     except subprocess.CalledProcessError:
@@ -65,15 +67,15 @@ def getSelinuxModules():
         if priority == "100":
             #module from selinux-policy-* package - skipping
             continue
-        # extract custom module and save it to SelinuxModule object
+        # extract custom module and save it to SELinuxModule object
         try:
             call(['semodule', '-c', '-X', priority, '-E', name])
             # check if the module contains invalid types and remove them if so
             removed = checkModule(name + ".cil")
             # get content of the module
-            module_content = call(['cat', name + ".cil"], split=True)
+            module_content = call(['cat', name + ".cil"], split=False)
 
-            semodule_list.append(SelinuxModule(
+            semodule_list.append(SELinuxModule(
                 name=name,
                 priority=int(priority),
                 content=module_content,
@@ -108,11 +110,11 @@ def getSelinuxModules():
     return semodule_list
 
 
-class SelinuxContentScanner(Actor):
+class SELinuxContentScanner(Actor):
     name = 'selinuxcontentscanner'
     description = 'No description has been provided for the selinuxcontentscanner actor.'
     consumes = (SystemFacts, )
-    produces = (SelinuxModules, SelinuxCustom, )
+    produces = (SELinuxModules, SELinuxCustom, )
     tags = (FactsPhaseTag, IPUWorkflowTag, )
 
     def process(self):
@@ -121,21 +123,21 @@ class SelinuxContentScanner(Actor):
             if fact.selinux.enabled is False:
                 return
 
-        semodule_list = getSelinuxModules()
+        semodule_list = getSELinuxModules()
 
-        self.produce(SelinuxModules(modules=semodule_list))
+        self.produce(SELinuxModules(modules=semodule_list))
 
         try:
             semanage = call(['semanage', 'export'], split=True)
         except subprocess.CalledProcessError:
             return
 
-        self.produce(SelinuxCustom(commands=semanage))
+        self.produce(SELinuxCustom(commands=semanage))
 
         #cmd = [ 'semanage', 'export' ]
         #stdout = call(cmd, split=False)
-        #semodules = SelinuxModules(
-        #    modules=[SelinuxModule(
+        #semodules = SELinuxModules(
+        #    modules=[SELinuxModule(
         #        name="nn",
         #        priority=1,
         #        content=stdout
