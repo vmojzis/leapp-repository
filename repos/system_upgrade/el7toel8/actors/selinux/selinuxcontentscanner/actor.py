@@ -5,6 +5,7 @@ from leapp.libraries.stdlib import call
 import subprocess
 import re
 import os
+from shutil import rmtree
 
 WORKING_DIRECTORY = '/tmp/selinux/'
 
@@ -57,10 +58,12 @@ def getSELinuxModules():
     # cd to /tmp/selinux and save working directory so that we can return there
     try:
         wd = os.getcwd()
+        rmtree(WORKING_DIRECTORY)
         os.mkdir(WORKING_DIRECTORY)
         os.chdir(WORKING_DIRECTORY)
     except OSError:
-        pass
+        self.log.info("Failed to access working directory! Aborting.")
+        #return
 
     for (name, priority) in modules:
         if priority == "200":
@@ -86,11 +89,17 @@ def getSELinuxModules():
             )
         except subprocess.CalledProcessError:
             continue
+        # rename the cil module file so that it does not clash
+        # with the same module on different priority
+        try:
+            os.rename(name + ".cil", name + "_" + str(priority))
+        except OSError:
+            self.log.info("Failed to rename module file.")
     # this is necessary for check if container-selinux needs to be installed
     try:
         call(['semanage', 'export', '-f', 'semanage'])
     except subprocess.CalledProcessError:
-        continue
+        pass
     # Check if modules contain any type, attribute, or boolean contained in container-selinux and install it if so
     # This is necessary since container policy module is part of selinux-policy-targeted in RHEL 7 (but not in RHEL 8) 
     try:
@@ -99,15 +108,9 @@ def getSELinuxModules():
     except subprocess.CalledProcessError:
         # expected, ignore exception
         pass
-
-    # clean-up
-    for file in os.listdir(WORKING_DIRECTORY):
-        try:
-            os.remove(file)
-        except OSError:
-            continue
+        
     try:
-        os.rmdir(WORKING_DIRECTORY)
+        rmtree(WORKING_DIRECTORY)
         os.chdir(wd)
     except OSError:
         pass

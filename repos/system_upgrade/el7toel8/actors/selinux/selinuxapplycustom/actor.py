@@ -54,7 +54,7 @@ class SELinuxApplyCustom(Actor):
                 try:
                     os.remove(cil_filename)
                 except OSError:
-                    continue
+                    self.log.info("Error removing module file")
         # import SELinux customizations collected by "semanage export"
         for custom in self.consume(SELinuxCustom):
             self.log.info('Importing SELinux customizations collected by "semanage export".')
