@@ -33,7 +33,7 @@ class SELinuxContentScanner(Actor):
             if fact.selinux.enabled is False:
                 return
 
-        semodule_list = getSELinuxModules()
+        semodule_list = self.getSELinuxModules()
 
         self.produce(SELinuxModules(modules=semodule_list))
 
@@ -104,7 +104,7 @@ class SELinuxContentScanner(Actor):
         except subprocess.CalledProcessError:
             return
 
-        modules = parseSemodule(semodule)
+        modules = self.parseSemodule(semodule)
         semodule_list = []
 
         # modules need to be extracted into cil files
