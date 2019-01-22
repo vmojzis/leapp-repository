@@ -10,7 +10,7 @@ WORKING_DIRECTORY = '/tmp/selinux/'
 
 class SELinuxApplyCustom(Actor):
     name = 'selinuxapplycustom'
-    description = 'No description has been provided for the selinuxcontentscanner actor.'
+    description = 'No description has been provided for the selinuxapplycustom actor.'
     consumes = (SELinuxCustom, SELinuxModules, )
     produces = (CheckResult, )
     # TODO replace by - tags = (ApplicationsPhaseTag, IPUWorkflowTag, )
@@ -23,7 +23,7 @@ class SELinuxApplyCustom(Actor):
         except OSError:
             pass
 
-        # exit if SELinux is disabled
+        # import custom SElinux modules
         for semodules in self.consume(SELinuxModules):
             self.log.info("Processing custom SELinux policy modules. Count: " + 
                 str(len(semodules.modules))
@@ -57,7 +57,27 @@ class SELinuxApplyCustom(Actor):
                     os.remove(cil_filename)
                 except OSError:
                     continue
-        # TODO semanage import
+        # import SELinux customizations collected by "semanage export"
+        for custom in self.consume(SELinuxCustom):
+            self.log.info('Importing SELinux customizations collected by "semanage export".')
+            semanage_filename = WORKING_DIRECTORY + "semanage"
+            # save SELinux customizations to disk
+            try:
+                with open(semanage_filename, 'w') as file:
+                    file.write('\n'.join(custom.commands))
+            except OSError as e:
+                self.log.info("Error writing SELinux customizations:" + e.strerror)
+            # import customizations
+            try:
+                call(['semanage', 'import', '-f', semanage_filename])
+            except subprocess.CalledProcessError:
+                continue
+            # clean-up
+            try:
+                os.remove(semanage_filename)
+            except OSError:
+                continue
+
         # clean-up
         try:
             os.rmdir("/tmp/selinux")
