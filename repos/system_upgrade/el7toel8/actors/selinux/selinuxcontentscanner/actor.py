@@ -6,6 +6,8 @@ import subprocess
 import re
 import os
 
+WORKING_DIRECTORY = '/tmp/selinux/'
+
 # types and attributes that where removed between RHEL 7 and 8
 REMOVED_TYPES_=["base_typeattr_15","direct_run_init","gpgdomain","httpd_exec_scripts","httpd_user_script_exec_type","ibendport_type","ibpkey_type","pcmcia_typeattr_2","pcmcia_typeattr_3","pcmcia_typeattr_4","pcmcia_typeattr_5","pcmcia_typeattr_6","pcmcia_typeattr_7","sandbox_caps_domain","sandbox_typeattr_2","sandbox_typeattr_3","sandbox_typeattr_4","server_ptynode","systemctl_domain","user_home_content_type","userhelper_type","cgdcbxd_exec_t","cgdcbxd_t","cgdcbxd_unit_file_t","cgdcbxd_var_run_t","ganesha_use_fusefs","ganesha_exec_t","ganesha_t","ganesha_tmp_t","ganesha_unit_file_t","ganesha_var_log_t","ganesha_var_run_t","ganesha_use_fusefs"]
 # to be used with grep
@@ -55,8 +57,8 @@ def getSELinuxModules():
     # cd to /tmp/selinux and save working directory so that we can return there
     try:
         wd = os.getcwd()
-        os.mkdir("/tmp/selinux")
-        os.chdir("/tmp/selinux")
+        os.mkdir(WORKING_DIRECTORY)
+        os.chdir(WORKING_DIRECTORY)
     except OSError:
         pass
 
@@ -84,7 +86,11 @@ def getSELinuxModules():
             )
         except subprocess.CalledProcessError:
             continue
-
+    # this is necessary for check if container-selinux needs to be installed
+    try:
+        call(['semanage', 'export', '-f', 'semanage'])
+    except subprocess.CalledProcessError:
+        continue
     # Check if modules contain any type, attribute, or boolean contained in container-selinux and install it if so
     # This is necessary since container policy module is part of selinux-policy-targeted in RHEL 7 (but not in RHEL 8) 
     try:
@@ -95,20 +101,18 @@ def getSELinuxModules():
         pass
 
     # clean-up
-    for (name, priority) in modules:
-        if priority not in ["100","200"]:
-            try:
-                os.remove(name + ".cil")
-            except OSError:
-                continue
+    for file in os.listdir(WORKING_DIRECTORY):
+        try:
+            os.remove(file)
+        except OSError:
+            continue
     try:
-        os.rmdir("/tmp/selinux")
+        os.rmdir(WORKING_DIRECTORY)
         os.chdir(wd)
     except OSError:
         pass
 
     return semodule_list
-
 
 class SELinuxContentScanner(Actor):
     name = 'selinuxcontentscanner'
@@ -127,12 +131,29 @@ class SELinuxContentScanner(Actor):
 
         self.produce(SELinuxModules(modules=semodule_list))
 
+        semanage_removed = []
+        semanage_valid = []
         try:
+            # Collect SELinux customizations and select the ones that
+            # can be reapplied after the upgrade
             semanage = call(['semanage', 'export'], split=True)
+            for line in semanage:
+                for setype in REMOVED_TYPES_:
+                    if setype in line:
+                        semanage_removed.append(line)
+                        break
+                else:
+                    semanage_valid.append(line)
+
         except subprocess.CalledProcessError:
             return
 
-        self.produce(SELinuxCustom(commands=semanage))
+        self.produce(
+            SELinuxCustom(
+                commands=semanage_valid,
+                removed=semanage_removed
+            )
+        )
 
         #cmd = [ 'semanage', 'export' ]
         #stdout = call(cmd, split=False)

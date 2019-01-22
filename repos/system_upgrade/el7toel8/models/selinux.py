@@ -19,4 +19,5 @@ class SELinuxCustom(Model):
     """SELinux customizations returned by semanage export"""
     topic = SystemInfoTopic
     commands = fields.List(fields.String())
+    removed = fields.List(fields.String())
 

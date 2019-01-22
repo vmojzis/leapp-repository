@@ -1,20 +1,18 @@
 from leapp.actors import Actor
 from leapp.models import SELinuxModules, SELinuxCustom, CheckResult
-from leapp.tags import FactsPhaseTag, IPUWorkflowTag
+from leapp.tags import ApplicationsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 import subprocess
 import os
 
 WORKING_DIRECTORY = '/tmp/selinux/'
 
-
 class SELinuxApplyCustom(Actor):
     name = 'selinuxapplycustom'
     description = 'No description has been provided for the selinuxapplycustom actor.'
     consumes = (SELinuxCustom, SELinuxModules, )
     produces = (CheckResult, )
-    # TODO replace by - tags = (ApplicationsPhaseTag, IPUWorkflowTag, )
-    tags = (FactsPhaseTag, IPUWorkflowTag, )
+    tags = (ApplicationsPhaseTag, IPUWorkflowTag, )
 
     def process(self):
         # cil module files need to be extracted to disk in order to be installed
