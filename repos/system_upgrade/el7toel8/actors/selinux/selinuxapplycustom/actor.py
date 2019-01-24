@@ -4,6 +4,7 @@ from leapp.tags import ApplicationsPhaseTag, IPUWorkflowTag
 from leapp.libraries.stdlib import call
 import subprocess
 import os
+from shutil import rmtree
 
 WORKING_DIRECTORY = '/tmp/selinux/'
 
@@ -17,9 +18,16 @@ class SELinuxApplyCustom(Actor):
     def process(self):
         # cil module files need to be extracted to disk in order to be installed
         try:
+            # clear working directory
+            rmtree(WORKING_DIRECTORY)
+        except OSError:
+            #expected
+            pass
+        try:
             os.mkdir(WORKING_DIRECTORY)
         except OSError:
-            pass
+            self.log.info("Failed to access working directory! Aborting.")
+            return
 
         # import custom SElinux modules
         for semodules in self.consume(SELinuxModules):
@@ -27,7 +35,7 @@ class SELinuxApplyCustom(Actor):
                 str(len(semodules.modules))
             )
             for module in semodules.modules:
-                cil_filename = module.name + ".cil"
+                cil_filename = WORKING_DIRECTORY + module.name + ".cil"
                 self.log.info("Installing " + module.name
                  + " on priority " + str(module.priority) + ".")
                 if module.removed:
@@ -35,7 +43,7 @@ class SELinuxApplyCustom(Actor):
                     self.log.info('\n'.join(module.removed))
                 # write module content to disk
                 try:
-                    with open(WORKING_DIRECTORY + cil_filename, 'w') as file:
+                    with open(cil_filename, 'w') as file:
                         file.write(module.content)
                 except OSError as e:
                     self.log.info("Error writing " + cil_filename + " :" + e.strerror)
@@ -47,10 +55,11 @@ class SELinuxApplyCustom(Actor):
                         '-X',
                         str(module.priority),
                         '-i',
-                        WORKING_DIRECTORY + cil_filename]
+                        cil_filename]
                     )
-                except subprocess.CalledProcessError:
-                    continue
+                except subprocess.CalledProcessError as e:
+                    self.log.info("Error installing module: " + e.strerror)
+                    pass
                 try:
                     os.remove(cil_filename)
                 except OSError:

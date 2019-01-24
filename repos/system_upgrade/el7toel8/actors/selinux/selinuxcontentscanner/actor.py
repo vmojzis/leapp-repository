@@ -110,6 +110,7 @@ class SELinuxContentScanner(Actor):
         # modules need to be extracted into cil files
         # cd to /tmp/selinux and save working directory so that we can return there
         try:
+            # clear working directory
             rmtree(WORKING_DIRECTORY)
         except OSError:
             #expected
