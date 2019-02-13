@@ -1,11 +1,11 @@
-from leapp.actors import Actor
-from leapp.models import SELinuxModules, SELinuxModule, SELinuxCustom, SystemFacts
-from leapp.tags import FactsPhaseTag, IPUWorkflowTag
-from leapp.libraries.stdlib import call
-import subprocess
-import re
 import os
+import re
 from shutil import rmtree
+
+from leapp.actors import Actor
+from leapp.models import SELinuxModules, SELinuxModule, SELinuxCustom, SELinuxFacts, SELinuxRequestRPMs, RpmTransactionTasks
+from leapp.tags import FactsPhaseTag, IPUWorkflowTag
+from leapp.libraries.stdlib import run, CalledProcessError
 
 WORKING_DIRECTORY = '/tmp/selinux/'
 
@@ -21,29 +21,50 @@ CONTAINER_TYPES="|".join(["container_connect_any","container_runtime_t","contain
 
 
 class SELinuxContentScanner(Actor):
+    '''
+    Scan the system for any SELinux customizations
+
+    Find SELinux policy customizations (custom policy modules and changes
+    introduced by semanage) and save them in SELinuxModules and SELinuxCustom
+    models. Customizations that are incompatible with SELinux policy on RHEL-8
+    are removed.
+    '''
     name = 'selinuxcontentscanner'
-    description = 'No description has been provided for the selinuxcontentscanner actor.'
-    consumes = (SystemFacts, )
-    produces = (SELinuxModules, SELinuxCustom, )
+    consumes = (SELinuxFacts, )
+    produces = (SELinuxModules, SELinuxCustom, SELinuxRequestRPMs, RpmTransactionTasks,)
     tags = (FactsPhaseTag, IPUWorkflowTag, )
 
     def process(self):
         # exit if SELinux is disabled
-        for fact in self.consume(SystemFacts):
-            if fact.selinux.enabled is False:
+        for fact in self.consume(SELinuxFacts):
+            if not fact.enabled:
                 return
 
-        semodule_list = self.getSELinuxModules()
+        (semodule_list, request_rpms) = self.getSELinuxModules()
 
         self.produce(SELinuxModules(modules=semodule_list))
+        self.produce(
+            RpmTransactionTasks(
+                to_install = request_rpms[1],
+                # possibly not necessary - dnf should not remove RPMs (that exist in both RHEL 7 and 8) durign update
+                to_keep = request_rpms[0]
+            )
+        )
+        # this is produced so that we can later verify that the RPMs are present after upgrade
+        self.produce(
+            SELinuxRequestRPMs(
+                to_install = request_rpms[1],
+                to_keep = request_rpms[0]
+            )
+        )
 
         semanage_removed = []
         semanage_valid = []
         try:
             # Collect SELinux customizations and select the ones that
             # can be reapplied after the upgrade
-            semanage = call(['semanage', 'export'], split=True)
-            for line in semanage:
+            semanage = run(['semanage', 'export'], split=True)
+            for line in semanage.get("stdout", ""):
                 for setype in REMOVED_TYPES_:
                     if setype in line:
                         semanage_removed.append(line)
@@ -51,7 +72,7 @@ class SELinuxContentScanner(Actor):
                 else:
                     semanage_valid.append(line)
 
-        except subprocess.CalledProcessError:
+        except CalledProcessError:
             return
 
         self.produce(
@@ -61,51 +82,64 @@ class SELinuxContentScanner(Actor):
             )
         )
 
-        #cmd = [ 'semanage', 'export' ]
-        #stdout = call(cmd, split=False)
-        #semodules = SELinuxModules(
-        #    modules=[SELinuxModule(
-        #        name="nn",
-        #        priority=1,
-        #        content=stdout
-        #)],)
-        #self.produce(semodules)
-
-
-
     def checkModule(self, name):
-        """ Check if module contains one of removed types.
-            If so, comment out corresponding lines and return them.
-        """
+        '''
+        Check if given module contains one of removed types.
+
+        If so, comment out corresponding lines and return them.
+        The function expects a text file "$name" containing cil policy
+        to be present in the current directory.
+        '''
         try:
-            removed = call(['grep', '-w', '-E', REMOVED_TYPES, name], split=True)
-            call(['sed', '-i', SED_COMMAND, name])
-            return removed
-        except subprocess.CalledProcessError:
+            removed = run(['grep', '-w', '-E', REMOVED_TYPES, name], split=True)
+            run(['sed', '-i', SED_COMMAND, name])
+            return removed.get("stdout", "")
+        except CalledProcessError:
             return []
 
-    def parseSemodule(self, modules_str):
-        """Parse list of modules into list of tuples (name,priority)"""
+
+    def listSELinuxModules(self):
+        '''
+        Produce list of SELinux policy modules
+
+        Returns list of tuples (name,priority)
+        '''
+        try:
+            semodule = run(['semodule', '-lfull'], split=True)
+        except CalledProcessError:
+            return []
+
         modules = []
-        for module in modules_str:
+        for module in semodule.get("stdout", ""):
             # Matching line such as "100 zebra             pp "
             # "<priority> <module name>    <module type - pp/cil> "
-            m = re.match('([0-9]+)\s+(\w+)\s+(\w+)\s*\Z', module)
+            m = re.match(r'([0-9]+)\s+([\w-]+)\s+([\w-]+)\s*\Z', module)
             if not m:
                 #invalid output of "semodule -lfull"
-                break
+                self.log.info('Invalid output of "semodule -lfull": %s' % module)
+                continue
             modules.append((m.group(2), m.group(1)))
 
         return modules
 
-    def getSELinuxModules(self):
-        try:
-            semodule = call(['semodule', '-lfull'], split=True)
-        except subprocess.CalledProcessError:
-            return
 
-        modules = self.parseSemodule(semodule)
+    def getSELinuxModules(self):
+        '''
+        Read all custom SELinux policy modules from the system
+
+        Returns tuple (modules, (retain_rpms, install_rpms))
+        where "modules" is a list of "SELinuxModule" objects,
+        "retain_rpms" is a list of RPMs that should be retained 
+        during the upgrade and "install_rpms" is a list of RPMs
+        that should be installed during the upgrade
+
+        '''
+
+        modules = self.listSELinuxModules()
         semodule_list = []
+        # list of rpms containing policy modules to be installed on RHEL 8
+        retain_rpms = []
+        install_rpms = []
 
         # modules need to be extracted into cil files
         # cd to /tmp/selinux and save working directory so that we can return there
@@ -125,18 +159,26 @@ class SELinuxContentScanner(Actor):
 
         for (name, priority) in modules:
             if priority == "200":
-                #TODO - request "name-selinux" to be installed
+                # Module on priority 200 was installed by an RPM
+                # Request $name-selinux to be installed on RHEL8
+                retain_rpms.append(name + "-selinux")
                 continue
             if priority == "100":
-                #module from selinux-policy-* package - skipping
+                # module from selinux-policy-* package - skipping
                 continue
             # extract custom module and save it to SELinuxModule object
             try:
-                call(['semodule', '-c', '-X', priority, '-E', name])
+                run(['semodule', '-c', '-X', priority, '-E', name])
                 # check if the module contains invalid types and remove them if so
                 removed = self.checkModule(name + ".cil")
+
                 # get content of the module
-                module_content = call(['cat', name + ".cil"], split=False)
+                try:
+                    with open(name + ".cil", 'r') as file:
+                        module_content = file.read()
+                except OSError as e:
+                    self.log.info("Error reading %s.cil : %s" % (name, e.strerror))
+                    continue
 
                 semodule_list.append(SELinuxModule(
                     name=name,
@@ -145,32 +187,37 @@ class SELinuxContentScanner(Actor):
                     removed=removed
                     )
                 )
-            except subprocess.CalledProcessError:
+            except CalledProcessError:
+                self.log.info("Module %s could not be extracted!" % name)
                 continue
             # rename the cil module file so that it does not clash
             # with the same module on different priority
             try:
-                os.rename(name + ".cil", name + "_" + str(priority))
+                os.rename(name + ".cil",  "%s_%s" % (name, priority))
             except OSError:
+                # TODO leapp.libraries.stdlib.api.current_logger()
+                # and move the method to a library
                 self.log.info("Failed to rename module file.")
         # this is necessary for check if container-selinux needs to be installed
         try:
-            call(['semanage', 'export', '-f', 'semanage'])
-        except subprocess.CalledProcessError:
+            run(['semanage', 'export', '-f', 'semanage'])
+        except CalledProcessError:
             pass
         # Check if modules contain any type, attribute, or boolean contained in container-selinux and install it if so
         # This is necessary since container policy module is part of selinux-policy-targeted in RHEL 7 (but not in RHEL 8)
         try:
-            semodule = call(['grep', '-w', '-r', '-E', CONTAINER_TYPES], split=False)
-            #TODO - request "container-selinux" to be installed
-        except subprocess.CalledProcessError:
+            semodule = run(['grep', '-w', '-r', '-E', CONTAINER_TYPES], split=False)
+            # Request "container-selinux" to be installed since container types where used in local customizations
+            # and container-selinux policy was removed from selinux-policy-* packages
+            install_rpms.append("container-selinux")
+        except CalledProcessError:
             # expected, ignore exception
             pass
 
         try:
-            rmtree(WORKING_DIRECTORY)
             os.chdir(wd)
+            rmtree(WORKING_DIRECTORY)
         except OSError:
             pass
 
-        return semodule_list
+        return semodule_list, (retain_rpms, install_rpms)
