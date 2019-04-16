@@ -33,4 +33,3 @@ class SELinuxRequestRPMs(Model):
     topic = TransactionTopic
     to_keep = fields.List(fields.String(), default=[])
     to_install = fields.List(fields.String(), default=[])
-
