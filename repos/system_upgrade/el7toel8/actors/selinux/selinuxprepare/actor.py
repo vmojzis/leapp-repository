@@ -14,9 +14,9 @@ class SELinuxPrepare(Actor):
 
     name = 'selinuxprepare'
     # TODO change description to doc string - first line is summary, followed by more in-depth description
-    consumes = (SELinuxCustom, SELinuxModules, )
+    consumes = (SELinuxCustom, SELinuxModules)
     produces = ()
-    tags = (PreparationPhaseTag, IPUWorkflowTag, )
+    tags = (PreparationPhaseTag, IPUWorkflowTag)
 
     def process(self):
         # remove SELinux customizations done by semanage -- to be reintroduced after the upgrade
@@ -32,21 +32,19 @@ class SELinuxPrepare(Actor):
 
         # remove custom SElinux modules - to be reinstalled after the upgrade
         for semodules in self.consume(SELinuxModules):
-            self.log.info("Removing custom SELinux policy modules. Count: %d" % len(semodules.modules))
+            self.log.info("Removing custom SELinux policy modules. Count: %d", len(semodules.modules))
             for module in semodules.modules:
-                self.log.info("Removing %s on priority %d." % (module.name, module.priority))
+                self.log.info("Removing %s on priority %d.", module.name, module.priority)
                 try:
-                    semanage = run([
+                    run([
                         'semodule',
                         '-X',
                         str(module.priority),
                         '-r',
                         module.name]
                     )
-                except CalledProcessError:
-                    self.log.info("Failed to remove module %s on priority %d: %s" % (module.name, module.priority, semanage.get("stderr", "")))
+                except CalledProcessError as e:
+                    self.log.info("Failed to remove module %s on priority %d: %s", module.name, module.priority, str(e))
                     continue
 
         self.log.info("SElinux customizations removed successfully.")
-
-
