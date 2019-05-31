@@ -2,6 +2,7 @@ import os
 import re
 from shutil import rmtree
 from leapp.libraries.stdlib import api, run, CalledProcessError
+from leapp.models import SELinuxModule
 
 # types and attributes that where removed between RHEL 7 and 8
 REMOVED_TYPES_=["base_typeattr_15","direct_run_init","gpgdomain","httpd_exec_scripts","httpd_user_script_exec_type","ibendport_type","ibpkey_type","pcmcia_typeattr_2","pcmcia_typeattr_3","pcmcia_typeattr_4","pcmcia_typeattr_5","pcmcia_typeattr_6","pcmcia_typeattr_7","sandbox_caps_domain","sandbox_typeattr_2","sandbox_typeattr_3","sandbox_typeattr_4","server_ptynode","systemctl_domain","user_home_content_type","userhelper_type","cgdcbxd_exec_t","cgdcbxd_t","cgdcbxd_unit_file_t","cgdcbxd_var_run_t","ganesha_use_fusefs","ganesha_exec_t","ganesha_t","ganesha_tmp_t","ganesha_unit_file_t","ganesha_var_log_t","ganesha_var_run_t","ganesha_use_fusefs"]
@@ -9,6 +10,7 @@ REMOVED_TYPES_=["base_typeattr_15","direct_run_init","gpgdomain","httpd_exec_scr
 # types, attributes and boolean contained in container-selinux
 CONTAINER_TYPES=["container_connect_any","container_runtime_t","container_runtime_exec_t","spc_t","container_auth_t","container_auth_exec_t","spc_var_run_t","container_var_lib_t","container_home_t","container_config_t","container_lock_t","container_log_t","container_runtime_tmp_t","container_runtime_tmpfs_t","container_var_run_t","container_plugin_var_run_t","container_unit_file_t","container_devpts_t","container_share_t","container_port_t","container_build_t","container_logreader_t","docker_log_t","docker_tmpfs_t","docker_share_t","docker_t","docker_lock_t","docker_home_t","docker_exec_t","docker_unit_file_t","docker_devpts_t","docker_config_t","docker_tmp_t","docker_auth_exec_t","docker_plugin_var_run_t","docker_port_t","docker_auth_t","docker_var_run_t","docker_var_lib_t","container_domain","container_net_domain"]
 
+WORKING_DIRECTORY = '/tmp/selinux/'
 
 def checkModule(name):
     '''
@@ -103,7 +105,7 @@ def getSELinuxModules():
                 with open(name + ".cil", 'r') as cil_file:
                     module_content = cil_file.read()
             except OSError as e:
-                api.current_logger().info("Error reading %s.cil : %s", name, str(e))
+                api.current_logger().info("Error reading %s.cil : %s", name, e.get("stderr", ""))
                 continue
 
             semodule_list.append(SELinuxModule(

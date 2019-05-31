@@ -5,8 +5,6 @@ from leapp.libraries.stdlib import run, CalledProcessError
 from leapp.libraries.actor import library
 
 
-WORKING_DIRECTORY = '/tmp/selinux/'
-
 class SELinuxContentScanner(Actor):
     '''
     Scan the system for any SELinux customizations
