@@ -24,10 +24,9 @@ def removeCustomModules():
             api.current_logger().info("Removing %s on priority %d.", module.name, module.priority)
             try:
                 run(['semodule',
-                     '-X',
-                     str(module.priority),
-                     '-r',
-                     module.name]
+                     '-X', str(module.priority),
+                     '-r', module.name
+                     ]
                     )
             except CalledProcessError as e:
                 api.current_logger().warning("Failed to remove module %s on priority %d: %s",
