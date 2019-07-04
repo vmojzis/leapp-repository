@@ -42,7 +42,7 @@ def checkModule(name):
     try:
         removed = run(['grep', '-w', '-E', "|".join(REMOVED_TYPES_), name], split=True)
         # Add ";" at the beginning of invalid lines (comment them out)
-        run(['sed', '-i', '/%s/s/^/;/g' % r'\|'.join(REMOVED_TYPES_), name])
+        run(['sed', '-i', '/{}/s/^/;/g'.format(r'\|'.join(REMOVED_TYPES_)), name])
         return removed.get("stdout", [])
     except CalledProcessError:
         return []
@@ -142,7 +142,7 @@ def getSELinuxModules():
         # rename the cil module file so that it does not clash
         # with the same module on different priority
         try:
-            os.rename(name + ".cil", "%s_%s" % (name, priority))
+            os.rename(name + ".cil", "{}_{}".format(name, priority))
         except OSError:
             api.current_logger().warning("Failed to rename module file %s to include priority.", name)
     # this is necessary for check if container-selinux needs to be installed
