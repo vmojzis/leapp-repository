@@ -39,7 +39,7 @@ class SELinuxApplyCustom(Actor):
         for semodules in self.consume(SELinuxModules):
             self.log.info("Processing custom SELinux policy modules. Count: %d.", len(semodules.modules))
             for module in semodules.modules:
-                cil_filename = os.path.join(WORKING_DIRECTORY, "%s.cil" % module.name)
+                cil_filename = os.path.join(WORKING_DIRECTORY, "%s.cil".format(module.name))
                 self.log.info("Installing module %s on priority %d.", module.name, module.priority)
                 if module.removed:
                     self.log.warning("The following lines where removed because of incompatibility: \n%s",
@@ -54,10 +54,8 @@ class SELinuxApplyCustom(Actor):
 
                 try:
                     run(['semodule',
-                         '-X',
-                         str(module.priority),
-                         '-i',
-                         cil_filename
+                         '-X', str(module.priority),
+                         '-i', cil_filename
                          ]
                         )
                 except CalledProcessError as e:
@@ -93,10 +91,7 @@ class SELinuxApplyCustom(Actor):
                 continue
 
         # clean-up
-        try:
-            os.rmdir("/tmp/selinux")
-        except OSError:
-            pass
+        rmtree(WORKING_DIRECTORY, ignore_errors=True)
 
         # TODO - Verify that all RPM packages reqested by selinux actors are installed
         self.log.info("Verifying selinux-related RPMs requested before upgrade.")
